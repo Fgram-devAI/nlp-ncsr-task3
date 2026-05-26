@@ -4,15 +4,20 @@ version = "0.1.0"
 description = "NCSR Athens — NLP Course, Assignment 3: Sequence Labeling with Pretrained Language Models."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
-authors = [{ name = "Faidon Grammenos", email = "faidon.gramm@gmail.com" }]
+authors = [{ name = "Faidon Grammatikopoulos", email = "faidon.gramm@gmail.com" }]
 
-# Local-only dependencies. Training runs on Colab; torch/transformers are intentionally NOT
-# listed here. See CLAUDE.md §3.
+# Local dependencies for authoring + light scripts. Training and full-dataset evaluation
+# still run on Colab — see CLAUDE.md §3. Local scripts must pin device='cpu' (no MPS).
 dependencies = [
     "jupyterlab>=4.2",
     "nbformat>=5.10",
     "ruff>=0.6",
     "pandas>=2.2",
+    "torch>=2.12.0",
+    "transformers>=5.9.0",
+    "scikit-learn>=1.8.0",
+    "seqeval>=1.2.2",
+    "tqdm>=4.67.3",
 ]
 
 [tool.uv]
