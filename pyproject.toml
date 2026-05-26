@@ -1,0 +1,26 @@
+[project]
+name = "nlp-ncsr-task3"
+version = "0.1.0"
+description = "NCSR Athens — NLP Course, Assignment 3: Sequence Labeling with Pretrained Language Models."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+authors = [{ name = "Faidon Grammenos", email = "faidon.gramm@gmail.com" }]
+
+# Local-only dependencies. Training runs on Colab; torch/transformers are intentionally NOT
+# listed here. See CLAUDE.md §3.
+dependencies = [
+    "jupyterlab>=4.2",
+    "nbformat>=5.10",
+    "ruff>=0.6",
+    "pandas>=2.2",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

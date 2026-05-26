@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.python-version
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+.jupyter/
+
+# Model artifacts — Colab/HF caches, checkpoints, exports
+*.pt
+*.bin
+*.safetensors
+*.onnx
+runs/
+lightning_logs/
+wandb/
+mlruns/
+checkpoints/
+
+# Datasets (never commit raw CoNLL-2003 — Kaggle ToS + bloat)
+conll003-englishversion/
+data/
+
+# Secrets
+.env
+.env.*
+!.env.example
+kaggle.json
+.kaggle/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Claude / agent-tooling artifacts — local-only memory, not part of the public repo
+CLAUDE.md
+.claude/settings.local.json
+.claude-mem/
+docs/prompts-guardrails/
+docs/superpowers/
+
+# Reports build artifacts
+reports/build/
+reports/*.aux
+reports/*.log
+reports/*.out
+reports/*.toc
