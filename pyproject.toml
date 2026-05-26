@@ -29,3 +29,25 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["src"]
+exclude = [".venv", "**/node_modules", "**/.*", "**/__pycache__", "notebooks/**"]
+# NER-BERT.py is the instructor-provided starter, kept verbatim. `ignore` (vs `exclude`)
+# tells Pylance to suppress diagnostics even when the file is open in the editor.
+ignore = ["src/NER-BERT.py"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false
+reportMissingImports = "error"
+# torch's __all__ omits common runtime names (device, tensor, long, argmax, cat, …).
+# These are not real issues, just stub strictness. Silence the rule project-wide.
+reportPrivateImportUsage = false
+useLibraryCodeForTypes = true
+venvPath = "."
+venv = ".venv"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.409",
+]

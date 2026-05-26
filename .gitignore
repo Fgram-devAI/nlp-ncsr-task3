@@ -42,7 +42,7 @@ kaggle.json
 
 # Claude / agent-tooling artifacts — local-only memory, not part of the public repo
 CLAUDE.md
-.claude/settings.local.json
+.claude/
 .claude-mem/
 docs/prompts-guardrails/
 docs/superpowers/
