@@ -18,6 +18,7 @@ dependencies = [
     "scikit-learn>=1.8.0",
     "seqeval>=1.2.2",
     "tqdm>=4.67.3",
+    "kagglehub<1.0",
 ]
 
 [tool.uv]
