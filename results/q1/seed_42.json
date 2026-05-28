@@ -1,0 +1,20 @@
+{
+  "question": "Q1",
+  "script": "src/q1_baseline_3runs.py",
+  "model": "bert-base-uncased",
+  "task": "ner",
+  "seed": 42,
+  "run_index": 0,
+  "epochs": 3,
+  "batch_size": 8,
+  "lr": 1e-05,
+  "training_seconds": 3166.832338917,
+  "test": {
+    "token_micro_accuracy": 0.9789383008506515,
+    "token_macro_accuracy": 0.9036908835804986,
+    "entity_micro_f1": 0.897844752058875,
+    "entity_macro_f1": 0.8816608778435686
+  },
+  "device": "mps",
+  "git_commit": "7723b4b85c71823877eddd5ae62b615e298637ee"
+}
