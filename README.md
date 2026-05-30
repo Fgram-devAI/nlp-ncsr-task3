@@ -35,13 +35,16 @@ notebooks bring their own dependency cell.
 .
 ├── src/
 │   ├── NER-BERT.py                   # instructor-provided starter — UNCHANGED
-│   ├── q1_baseline_3runs.py          # Q1 — 3-seed sweep, local MPS
-│   └── q5_frozen_bert.py             # Q5 — diff anchor paired with the Q5 notebook
+│   ├── q1_baseline_3runs.py          # Q1 — 3-seed NER sweep, local MPS
+│   ├── q5_frozen_bert.py             # Q5 — frozen BERT, diff anchor (paired w/ notebook)
+│   └── q6_pos_tagging.py             # Q6 — POS tagging, diff anchor (paired w/ notebook)
 ├── notebooks/
 │   ├── 00_baseline_ner_bert.ipynb    # legacy Colab port of the starter
-│   └── 05_q5_frozen_bert.ipynb       # Q5 — self-contained Colab T4 runtime
+│   ├── 05_q5_frozen_bert.ipynb       # Q5 — self-contained Colab T4 runtime
+│   └── 06_q6_pos_tagging.ipynb       # Q6 — self-contained Colab T4 runtime
 ├── results/
-│   └── q1/seed_{42,43,44}.json       # per-seed run metrics (committed)
+│   ├── q1/seed_{42,43,44}.json       # Q1 NER baseline metrics (committed)
+│   └── q6/                           # Q6 POS metrics (populated by the notebook)
 ├── reports/                          # PDF draft sources, figures
 ├── pyproject.toml                    # local runtime + dev deps
 └── .gitignore
@@ -77,16 +80,37 @@ To preview/edit notebooks locally:
 uv run jupyter lab
 ```
 
+## Colab notebooks
+
+One-click launchers for every runnable notebook. The badges resolve against `main`,
+so a freshly cloned reader can open any of them directly.
+
+| Question | Topic                              | Notebook                                                       | Launch                                                                                                                                                                            |
+| -------- | ---------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1 (baseline) | NER fine-tune (legacy port)   | [`notebooks/00_baseline_ner_bert.ipynb`](notebooks/00_baseline_ner_bert.ipynb) | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Fgram-devAI/nlp-ncsr-task3/blob/main/notebooks/00_baseline_ner_bert.ipynb) |
+| Q5       | Frozen BERT, head-only training    | [`notebooks/05_q5_frozen_bert.ipynb`](notebooks/05_q5_frozen_bert.ipynb)       | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Fgram-devAI/nlp-ncsr-task3/blob/main/notebooks/05_q5_frozen_bert.ipynb)         |
+| Q6       | POS tagging (full fine-tune)       | [`notebooks/06_q6_pos_tagging.ipynb`](notebooks/06_q6_pos_tagging.ipynb)       | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Fgram-devAI/nlp-ncsr-task3/blob/main/notebooks/06_q6_pos_tagging.ipynb)         |
+
+Q3, Q7, Q8, Q9, Q10 — added as they are implemented. Q1's authoritative
+implementation is `src/q1_baseline_3runs.py` (runs locally on MPS); the
+`00_baseline_ner_bert.ipynb` notebook is kept as a Colab fallback.
+
 ## Running on Colab
 
-1. Open the desired notebook from this repo on Colab: `File → Open notebook → GitHub` and
-   pick the notebook.
+1. Open the notebook you want via the table above (or `File → Open notebook → GitHub`
+   in Colab and pick from the `Fgram-devAI/nlp-ncsr-task3` repo).
 2. Set Colab secrets (key icon in the left sidebar):
    - `KAGGLE_USERNAME`, `KAGGLE_KEY` — required to download CoNLL-2003 via `kagglehub`.
    - `GROQ_API_KEY` — required for Q9/Q10 only.
 3. `Runtime → Change runtime type → GPU` (T4 is enough; P100/A100 if available).
-4. Run all cells. The final cell saves a metrics JSON; download it and commit it under
-   `results/`.
+4. **Optional but recommended for long sweeps** — run the "Persist results to
+   Google Drive" cell (provided in each Q5+ notebook). It mounts Drive and
+   redirects `RESULTS_DIR` so per-seed JSONs survive runtime kills (idle
+   timeouts, browser close). Without it, results land in the ephemeral
+   `/content/results/qN/` and must be downloaded before the runtime dies.
+5. Run all cells. If you skipped the Drive cell, the final cell triggers
+   browser downloads of the per-seed JSONs — drop them into the matching
+   `results/qN/` folder locally and commit.
 
 ## Dataset
 
