@@ -14,28 +14,52 @@ plus the modified code artifacts.
 
 ## Compute
 
-All training and large-model inference runs on **Google Colab** (T4/P100/A100 GPU).
-The local Apple-Silicon machine is used only for code editing, light data inspection,
-notebook authoring, and writing the report. The local `.venv` deliberately omits
-`torch` / `transformers` — see [pyproject.toml](pyproject.toml).
+Hybrid policy by question:
+
+| Question(s) | Runtime                              | Why                                            |
+| ----------- | ------------------------------------ | ---------------------------------------------- |
+| Q1          | **Local Apple-Silicon MPS** (script) | Baseline; ~53 min/seed on M4 Pro Max.          |
+| Q3          | Local, inference-only                | Loads Q1's seed=42 predictions, no retraining. |
+| Q5–Q8       | **Google Colab T4** (notebooks)      | ~5–15 min/seed; saves ~10 h of MPS time.       |
+| Q9, Q10     | Local HTTP to Groq                   | No GPU needed.                                 |
+| Q2, Q4      | Written-only                         | —                                              |
+
+The local `.venv` includes `torch`, `transformers`, `scikit-learn`, `seqeval`,
+`tqdm`, and `kagglehub` so scripts (Q1, Q3, Q9, Q10) and IDE diagnostics work
+end-to-end without surprises — see [pyproject.toml](pyproject.toml). Colab
+notebooks bring their own dependency cell.
 
 ## Layout
 
 ```
 .
 ├── src/
-│   └── NER-BERT.py                   # instructor-provided starter
+│   ├── NER-BERT.py                   # instructor-provided starter — UNCHANGED
+│   ├── q1_baseline_3runs.py          # Q1 — 3-seed sweep, local MPS
+│   └── q5_frozen_bert.py             # Q5 — diff anchor paired with the Q5 notebook
 ├── notebooks/
-│   └── 00_baseline_ner_bert.ipynb    # Q1 baseline (faithful Colab port)
-├── results/                          # per-run JSON metrics (committed)
+│   ├── 00_baseline_ner_bert.ipynb    # legacy Colab port of the starter
+│   └── 05_q5_frozen_bert.ipynb       # Q5 — self-contained Colab T4 runtime
+├── results/
+│   └── q1/seed_{42,43,44}.json       # per-seed run metrics (committed)
 ├── reports/                          # PDF draft sources, figures
-├── pyproject.toml                    # local-only dev deps (no torch)
+├── pyproject.toml                    # local runtime + dev deps
 └── .gitignore
 ```
 
-Per-question notebooks (Q1 three-run wrapper, Q5 frozen-BERT, Q6 POS, Q7 chunking,
-Q8 RoBERTa, Q9 Llama-3.1-8B zero-shot, Q10 Llama-3.3-70B zero-shot) are produced during
-the planning/implementation phase.
+**For Q5–Q8 (training-heavy questions)** the deliverable is **two paired
+artifacts** that are committed together:
+
+1. `notebooks/0N_qN_*.ipynb` — the Colab T4 runtime. Self-contained: no
+   `from src…` imports, no clone-then-run pattern. Open via the
+   Open-in-Colab badge in cell 0.
+2. `src/qN_*.py` — a Python script mirroring the notebook. Exists so
+   `git diff src/NER-BERT.py src/qN_*.py` is the report's clean
+   "what changed" diff. The notebook is authoritative if they ever
+   disagree.
+
+For Q1 (local MPS) only the script exists. Q3 / Q9 / Q10 are scripts
+in `src/`. Q2 / Q4 are written-only sections of the report.
 
 ## Local setup
 
