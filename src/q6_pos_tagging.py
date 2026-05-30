@@ -1,0 +1,350 @@
+#
+# Q6 — NER-BERT modified for Part-of-Speech tagging, 3 seeded runs.
+#
+# Modification of NER-BERT.py: same model architecture, same hyperparameters,
+# same 3-seed sweep as Q1 — but the classifier head is trained on POS tags
+# (the `pos_tags` column of CoNLL-2003) instead of NER tags. The output tag
+# space jumps from 9 BIO classes to ~45 Penn-Treebank POS classes.
+#
+# Per the assignment's footnote 6, entity-level metrics are NOT reported for
+# POS tagging: POS tags carry no BIO span structure, so seqeval cannot evaluate
+# them. We therefore strip the seqeval imports + the entity-tag accumulation in
+# `EvaluateModel`, the entity print block in `report_metrics`, and the
+# `entity_*` keys from the per-seed JSON shape. Token-level metrics
+# (micro accuracy, balanced accuracy, sklearn classification report) are kept.
+#
+# Persists per-seed JSON to results/q6/. Runs locally on MPS (Apple Silicon)
+# by default; CUDA on Colab; CPU as last-resort fallback. See CLAUDE.md §3.
+#
+# Diff anchors for the report:
+#   git diff src/NER-BERT.py        src/q6_pos_tagging.py  → full Q6 modification
+#   git diff src/q1_baseline_3runs.py src/q6_pos_tagging.py → concentrated Q6 delta
+#
+
+# dependencies
+import json
+import random
+import statistics
+import subprocess
+import time
+from pathlib import Path
+
+import kagglehub
+import numpy as np
+import torch
+import torch.optim as optim
+from transformers import AutoTokenizer, BertForTokenClassification
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report
+from tqdm.auto import tqdm
+
+# hyper-parameters (identical to Q1 for a fair comparison)
+EPOCHS = 3
+BATCH_SIZE = 8
+LR = 1e-5
+SEEDS = [42, 43, 44]                                         # 3-run sweep
+
+# results location — separate q6 namespace
+RESULTS_DIR = Path(__file__).resolve().parent.parent / "results" / "q6"
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# fetch the data via kagglehub (cached at ~/.cache/kagglehub/...)
+print("downloading dataset (cached on second run)")
+dataset_path = Path(kagglehub.dataset_download("alaakhaled/conll003-englishversion"))
+train_file = next(dataset_path.rglob("train.txt"))
+valid_file = next(dataset_path.rglob("valid.txt"))
+test_file = next(dataset_path.rglob("test.txt"))
+
+# device selection: MPS on M4, CUDA on Colab, CPU as fallback
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
+print("device:", device)
+
+
+# read the data files (unchanged from NER-BERT.py — still parses all 4 tag columns)
+def load_sentences(filepath):
+
+    sentences = []
+    tokens = []
+    pos_tags = []
+    chunk_tags = []
+    ner_tags = []
+
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f.readlines():
+            # sentence boundary
+            if (line.startswith('-DOCSTART-') or line.strip() == ''):
+                if len(tokens) > 0:
+                    sentences.append({
+                        'tokens': tokens,
+                        'pos_tags': pos_tags,
+                        'chunk_tags': chunk_tags,
+                        'ner_tags': ner_tags
+                    })
+                    tokens = []
+                    pos_tags = []
+                    chunk_tags = []
+                    ner_tags = []
+            else:
+                l = line.strip().split(' ')
+                if len(l) >= 4:
+                    tokens.append(l[0])
+                    pos_tags.append(l[1])
+                    chunk_tags.append(l[2])
+                    ner_tags.append(l[3])
+    # last sentence if file doesn't end with blank line
+    if len(tokens) > 0:
+        sentences.append({
+            'tokens': tokens,
+            'pos_tags': pos_tags,
+            'chunk_tags': chunk_tags,
+            'ner_tags': ner_tags
+        })
+    return sentences
+
+
+print('loading data')
+train_sentences = load_sentences(train_file)
+test_sentences = load_sentences(test_file)
+valid_sentences = load_sentences(valid_file)
+print(f"train={len(train_sentences)}, valid={len(valid_sentences)}, test={len(test_sentences)}")
+
+# ----- Q6 CHANGE: build tag set from POS column instead of NER column ---------
+all_tags = sorted({tag for s in train_sentences for tag in s['pos_tags']})
+label2id = {tag: i for i, tag in enumerate(all_tags)}
+id2label = {i: tag for tag, i in label2id.items()}
+num_labels = len(all_tags)
+print('Tagset size:', num_labels)
+print('Tags:', all_tags)
+# ------------------------------------------------------------------------------
+
+# load BERT tokenizer (AutoTokenizer dispatches to BertTokenizerFast for bert-base-uncased)
+bert_version = 'bert-base-uncased'
+tokenizer = AutoTokenizer.from_pretrained(bert_version)
+
+
+# unchanged from NER-BERT.py
+def align_label(tokens, labels):
+    word_ids = tokens.word_ids()
+    previous_word_idx = None
+    label_ids = []
+    for word_idx in word_ids:
+        if word_idx is None:
+            label_ids.append(-100)
+        elif word_idx != previous_word_idx:
+            label_ids.append(label2id.get(labels[word_idx], -100))
+        else:
+            label_ids.append(-100)
+        previous_word_idx = word_idx
+    return label_ids
+
+
+# ----- Q6 CHANGE: encode reads from `pos_tags` instead of `ner_tags` ----------
+def encode(sentence):
+    encodings = tokenizer(
+        sentence['tokens'],
+        truncation=True,
+        padding='max_length',
+        is_split_into_words=True,
+        return_tensors='pt'
+    )
+    labels = align_label(encodings, sentence['pos_tags'])
+    return {
+        'input_ids': encodings['input_ids'].squeeze(0),
+        'attention_mask': encodings['attention_mask'].squeeze(0),
+        'labels': torch.tensor(labels, dtype=torch.long)
+    }
+# ------------------------------------------------------------------------------
+
+
+print('encoding data')
+train_dataset = [encode(sentence) for sentence in train_sentences]
+valid_dataset = [encode(sentence) for sentence in valid_sentences]
+test_dataset = [encode(sentence) for sentence in test_sentences]
+
+
+# unchanged from NER-BERT.py
+class InputDataset(torch.utils.data.Dataset):
+    def __init__(self, data):
+        self.data = data
+    def __len__(self):
+        return len(self.data)
+    def __getitem__(self, idx):
+        return self.data[idx]
+
+
+train_dataset = InputDataset(train_dataset)
+valid_dataset = InputDataset(valid_dataset)
+test_dataset = InputDataset(test_dataset)
+
+
+# ----- Q6 CHANGE: EvaluateModel only tracks token-level arrays now ------------
+# The per-sentence BIO accumulation (y_true_tags / y_pred_tags) that fed seqeval
+# is dropped — POS tags have no BIO span structure for seqeval to score.
+def EvaluateModel(model, data_loader):
+    model.eval()
+    Y_actual_flat, Y_preds_flat = [], []
+
+    with torch.no_grad():
+        for batch in tqdm(data_loader, desc="Evaluating"):
+            batch = {k: v.to(device) for k, v in batch.items()}
+            outputs = model(**batch)
+            logits = outputs.logits
+            preds = torch.argmax(logits, dim=-1)
+
+            for idx in range(batch['labels'].size(0)):
+                true_values_all = batch['labels'][idx]
+                mask = (true_values_all != -100)
+                Y_actual_flat.append(true_values_all[mask])
+                Y_preds_flat.append(preds[idx][mask])
+
+    Y_actual_flat = torch.cat(Y_actual_flat).detach().cpu().numpy()
+    Y_preds_flat = torch.cat(Y_preds_flat).detach().cpu().numpy()
+    return Y_actual_flat, Y_preds_flat
+# ------------------------------------------------------------------------------
+
+
+# ----- Q6 CHANGE: report_metrics drops the entity-level print block -----------
+def report_metrics(Y_actual, Y_preds, split_name):
+    print(f"\n=== {split_name} — Token-level metrics ===")
+    print("Accuracy          : {:.3f}".format(accuracy_score(Y_actual, Y_preds)))
+    print("Balanced accuracy : {:.3f}".format(balanced_accuracy_score(Y_actual, Y_preds)))
+# ------------------------------------------------------------------------------
+
+
+# deterministic seeding (CLAUDE.md §3 / spec §D2)
+def set_seeds(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+
+
+# capture git sha for traceability
+def _git_sha() -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except Exception:
+        return None
+
+
+GIT_SHA = _git_sha()
+PER_SEED_RESULTS: list[dict] = []
+
+# 3-seed sweep — identical structure to Q1, with the POS-specific simplifications
+for run_index, seed in enumerate(SEEDS):
+    print(f"\n{'#' * 60}\n# Q6 run {run_index + 1}/{len(SEEDS)} — seed={seed}\n{'#' * 60}")
+
+    set_seeds(seed)
+
+    # initialize the model afresh per seed (classifier head re-inits stochastically).
+    # Note: num_labels is much larger here than Q1's 9 (~45 Penn-Treebank tags),
+    # so the classifier head is ~5x bigger — but the encoder cost dominates anyway.
+    print('initializing the model')
+    model = BertForTokenClassification.from_pretrained(
+        bert_version,
+        num_labels=num_labels,
+        id2label=id2label,
+        label2id=label2id,
+    )
+    # `from_pretrained` returns a union of model classes; pyright loses narrowing on .to(device).
+    model = model.to(device)  # pyright: ignore[reportArgumentType]
+    optimizer = optim.AdamW(params=model.parameters(), lr=LR)
+
+    # seed the train-loader's shuffle generator so batch order is reproducible
+    train_generator = torch.Generator().manual_seed(seed)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, generator=train_generator,
+    )
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=BATCH_SIZE)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE)
+
+    print('training the model')
+    train_start = time.perf_counter()
+    for epoch in range(EPOCHS):
+        model.train()
+        print(f"epoch {epoch + 1}/{EPOCHS}")
+        for batch in tqdm(train_loader, desc=f"Training epoch {epoch + 1}"):
+            batch = {k: v.to(device) for k, v in batch.items()}
+            outputs = model(**batch)
+            loss = outputs.loss
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        Y_actual, Y_preds = EvaluateModel(model, valid_loader)
+        report_metrics(Y_actual, Y_preds, split_name=f"Validation (epoch {epoch + 1})")
+    training_seconds = time.perf_counter() - train_start
+
+    print(f"\napplying the model to the test set (seed={seed})")
+    Y_actual, Y_preds = EvaluateModel(model, test_loader)
+    report_metrics(Y_actual, Y_preds, split_name=f"Test (seed={seed})")
+
+    # detailed token-level report (no seqeval report — see Q6 docstring + footnote 6)
+    label_ids_sorted = list(range(num_labels))
+    target_names = [id2label[i] for i in label_ids_sorted]
+    print(f"\n=== Test (seed={seed}) — Token-level classification report (sklearn) ===")
+    # sklearn stubs claim zero_division must be str; runtime accepts int 0 / 1 / np.nan / "warn".
+    print(classification_report(
+        Y_actual, Y_preds, labels=label_ids_sorted,
+        target_names=target_names,
+        zero_division=0,  # pyright: ignore[reportArgumentType]
+    ))
+
+    # persist this run's metrics JSON — Q6 shape DROPS the entity_* keys vs Q1
+    metrics = {
+        "question": "Q6",
+        "script": "src/q6_pos_tagging.py",
+        "model": bert_version,
+        "task": "pos",
+        "tag_column": "pos_tags",
+        "seed": seed,
+        "run_index": run_index,
+        "epochs": EPOCHS,
+        "batch_size": BATCH_SIZE,
+        "lr": LR,
+        "training_seconds": training_seconds,
+        "num_labels": num_labels,
+        # entity_* metrics intentionally omitted — see assignment footnote 6.
+        "test": {
+            "token_micro_accuracy": float(accuracy_score(Y_actual, Y_preds)),  # pyright: ignore[reportArgumentType]
+            "token_macro_accuracy": float(balanced_accuracy_score(Y_actual, Y_preds)),  # pyright: ignore[reportArgumentType]
+        },
+        "device": str(device),
+        "git_commit": GIT_SHA,
+    }
+    out_path = RESULTS_DIR / f"seed_{seed}.json"
+    out_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+    print(f"\nsaved metrics: {out_path}")
+    PER_SEED_RESULTS.append(metrics)
+
+    # free memory between seeds (helps on MPS and on Colab T4)
+    del model, optimizer, train_loader, valid_loader, test_loader
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+
+
+# aggregate across seeds and print mean ± stdev — token-level only for Q6
+print(f"\n{'#' * 60}\n# Q6 — summary across {len(SEEDS)} seeds\n{'#' * 60}")
+metric_keys = ["token_micro_accuracy", "token_macro_accuracy"]
+print(f"{'metric':30s}  {'mean':>10s}  {'stdev':>10s}  values")
+for k in metric_keys:
+    vals = [r["test"][k] for r in PER_SEED_RESULTS]
+    m = statistics.mean(vals)
+    s = statistics.stdev(vals) if len(vals) > 1 else 0.0
+    vals_str = ", ".join(f"{v:.4f}" for v in vals)
+    print(f"{k:30s}  {m:>10.4f}  {s:>10.4f}  [{vals_str}]")
+times = [r["training_seconds"] for r in PER_SEED_RESULTS]
+print(f"{'training_seconds':30s}  {statistics.mean(times):>10.1f}  "
+      f"{statistics.stdev(times) if len(times) > 1 else 0.0:>10.1f}  "
+      f"[{', '.join(f'{t:.1f}' for t in times)}]")
