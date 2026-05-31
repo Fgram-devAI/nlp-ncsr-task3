@@ -1,0 +1,15 @@
+{
+  "question": "q9",
+  "model": "llama-3.1-8b-instant",
+  "prompt": "v3_with_glossary",
+  "test_subset": "first_200_test_sentences",
+  "completed_count": 192,
+  "parse_failed_count": 8,
+  "unknown_tag_total": 0,
+  "test": {
+    "token_micro_accuracy": 0.9063153492262651,
+    "token_macro_accuracy": 0.5936710318249574,
+    "entity_micro_f1": 0.6556603773584906,
+    "entity_macro_f1": 0.4975568447933165
+  }
+}
