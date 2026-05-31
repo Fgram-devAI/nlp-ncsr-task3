@@ -16,6 +16,13 @@
 # Persists per-seed JSON to results/q6/. Runs locally on MPS (Apple Silicon)
 # by default; CUDA on Colab; CPU as last-resort fallback. See CLAUDE.md §3.
 #
+# Q3-style error analysis (PART OF Q6 per assignment §6): when the running
+# seed equals Q3_ANALYSIS_SEED (42 by default) the script additionally dumps
+# results/q6/q3_analysis_seed{seed}.json with the worst-tagged test sentence
+# (>=10 tokens, >=1 error, lowest per-sentence token accuracy) and the model's
+# predictions on a shared invented wild sentence. The 3-seed sweep is
+# otherwise unchanged.
+#
 # Diff anchors for the report:
 #   git diff src/NER-BERT.py        src/q6_pos_tagging.py  → full Q6 modification
 #   git diff src/q1_baseline_3runs.py src/q6_pos_tagging.py → concentrated Q6 delta
@@ -41,11 +48,27 @@ from tqdm.auto import tqdm
 EPOCHS = 3
 BATCH_SIZE = 8
 LR = 1e-5
-SEEDS = [42, 43, 44]                                         # 3-run sweep
+SEEDS = [42, 43, 44]   # 3-run sweep; set to [42] for a fast local Q3-only run
 
 # results location — separate q6 namespace
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "results" / "q6"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Q3-style error analysis constants. Triggered only when the running seed
+# equals Q3_ANALYSIS_SEED. The wild-sentence tokens are shared with Q3 NER
+# (src/q3_error_analysis.py) so the three error analyses (NER / POS / chunk)
+# can be compared like-for-like across the report.
+Q3_ANALYSIS_SEED = 42
+WILD_SENTENCE_TOKENS = [
+    "Greek", "startup", "Helios", "bought", "Bavarian", "rival",
+    "KronosAI", "in", "Berlin", "yesterday", "for", "2",
+    "billion", "euros", ".",
+]
+WILD_SENTENCE_POS_TAGS = [
+    "JJ", "NN", "NNP", "VBD", "JJ", "NN",
+    "NNP", "IN", "NNP", "NN", "IN", "CD",
+    "CD", "NNS", ".",
+]
 
 # fetch the data via kagglehub (cached at ~/.cache/kagglehub/...)
 print("downloading dataset (cached on second run)")
@@ -215,6 +238,28 @@ def report_metrics(Y_actual, Y_preds, split_name):
 # ------------------------------------------------------------------------------
 
 
+# Per-sentence inference used by the Q3 analysis branch. EvaluateModel only
+# returns flat token arrays — we need lists-of-lists keyed by sentence here.
+def predict_per_sentence(model, data_loader):
+    model.eval()
+    sentence_true_tags: list[list[str]] = []
+    sentence_pred_tags: list[list[str]] = []
+    with torch.no_grad():
+        for batch in tqdm(data_loader, desc="Q3 per-sentence inference"):
+            batch_on_device = {k: v.to(device) for k, v in batch.items()}
+            outputs = model(**batch_on_device)
+            logits = outputs.logits
+            preds = torch.argmax(logits, dim=-1)
+            for idx in range(batch_on_device["labels"].size(0)):
+                true_values_all = batch_on_device["labels"][idx]
+                mask = true_values_all != -100
+                true_values = true_values_all[mask].tolist()
+                pred_values = preds[idx][mask].tolist()
+                sentence_true_tags.append([id2label[i] for i in true_values])
+                sentence_pred_tags.append([id2label[i] for i in pred_values])
+    return sentence_true_tags, sentence_pred_tags
+
+
 # deterministic seeding (CLAUDE.md §3 / spec §D2)
 def set_seeds(seed: int) -> None:
     random.seed(seed)
@@ -325,6 +370,123 @@ for run_index, seed in enumerate(SEEDS):
     out_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     print(f"\nsaved metrics: {out_path}")
     PER_SEED_RESULTS.append(metrics)
+
+    # ── Q3-style error analysis branch (POS) ────────────────────────────────
+    if seed == Q3_ANALYSIS_SEED:
+        print(f"\n--- Q3-style error analysis (seed={seed}) ---")
+        sentence_true_tags, sentence_pred_tags = predict_per_sentence(model, test_loader)
+        assert len(sentence_true_tags) == len(test_sentences), (
+            f"per-sentence count {len(sentence_true_tags)} != "
+            f"test sentences {len(test_sentences)}"
+        )
+
+        # POS has no entity spans → rank by per-sentence token accuracy.
+        # >=10 tokens, >=1 error.
+        q3_candidates: list[tuple[int, list[str], list[str], list[str], float]] = []
+        for cand_idx, (cand_sent, cand_true, cand_pred) in enumerate(
+            zip(test_sentences, sentence_true_tags, sentence_pred_tags)
+        ):
+            cand_tokens = cand_sent["tokens"]
+            if len(cand_tokens) < 10:
+                continue
+            n_correct = sum(t == p for t, p in zip(cand_true, cand_pred))
+            n_err = len(cand_true) - n_correct
+            if n_err == 0:
+                continue
+            cand_acc = n_correct / len(cand_true)
+            q3_candidates.append((cand_idx, cand_tokens, cand_true, cand_pred, cand_acc))
+
+        if not q3_candidates:
+            print("  no candidate sentence found — skipping Q3 dump")
+        else:
+            q3_candidates.sort(key=lambda x: x[4])
+            (
+                worst_idx,
+                worst_tokens,
+                worst_true,
+                worst_pred,
+                worst_acc,
+            ) = q3_candidates[0]
+            print(
+                f"  failing sentence: idx={worst_idx} "
+                f"per-sentence-accuracy={worst_acc:.4f} "
+                f"length={len(worst_tokens)} candidates_considered={len(q3_candidates)}"
+            )
+            for tok, t, p in zip(worst_tokens, worst_true, worst_pred):
+                marker = "X" if t != p else " "
+                print(f"    {marker} {tok:25s}  true={t:7s}  pred={p:7s}")
+
+            # Wild-sentence inference (first-subword-wins, same alignment as training).
+            print(f"\n  tagging wild sentence ({len(WILD_SENTENCE_TOKENS)} tokens)")
+            wild_encoding = tokenizer(
+                WILD_SENTENCE_TOKENS,
+                truncation=True,
+                padding="max_length",
+                is_split_into_words=True,
+                return_tensors="pt",
+            )
+            wild_inputs = {
+                "input_ids": wild_encoding["input_ids"].to(device),
+                "attention_mask": wild_encoding["attention_mask"].to(device),
+            }
+            with torch.no_grad():
+                wild_logits = model(**wild_inputs).logits
+            wild_preds_full = torch.argmax(wild_logits, dim=-1)[0].tolist()
+            wild_word_ids = wild_encoding.word_ids()
+            wild_pred_tags: list[str] = []
+            prev_word_idx: int | None = None
+            for word_idx, pred_id in zip(wild_word_ids, wild_preds_full):
+                if word_idx is None or word_idx == prev_word_idx:
+                    prev_word_idx = word_idx
+                    continue
+                wild_pred_tags.append(id2label[pred_id])
+                prev_word_idx = word_idx
+            assert len(wild_pred_tags) == len(WILD_SENTENCE_TOKENS)
+
+            wild_correct = sum(
+                t == p for t, p in zip(WILD_SENTENCE_POS_TAGS, wild_pred_tags)
+            )
+            wild_acc = wild_correct / len(WILD_SENTENCE_POS_TAGS)
+            wild_errors = len(WILD_SENTENCE_POS_TAGS) - wild_correct
+            for tok, t, p in zip(WILD_SENTENCE_TOKENS, WILD_SENTENCE_POS_TAGS, wild_pred_tags):
+                marker = "X" if t != p else " "
+                print(f"    {marker} {tok:25s}  true={t:7s}  pred={p:7s}")
+
+            q3_summary = {
+                "question": "Q3 (POS)",
+                "script": "src/q6_pos_tagging.py",
+                "model": bert_version,
+                "task": "pos",
+                "seed": seed,
+                "epochs": EPOCHS,
+                "batch_size": BATCH_SIZE,
+                "lr": LR,
+                "training_seconds": training_seconds,
+                "device": str(device),
+                "git_commit": GIT_SHA,
+                "test_token_micro_accuracy": metrics["test"]["token_micro_accuracy"],
+                "n_candidate_sentences": len(q3_candidates),
+                "failing_sentence": {
+                    "test_idx": worst_idx,
+                    "n_tokens": len(worst_tokens),
+                    "n_errors": sum(t != p for t, p in zip(worst_true, worst_pred)),
+                    "per_sentence_accuracy": worst_acc,
+                    "tokens": worst_tokens,
+                    "true_tags": worst_true,
+                    "pred_tags": worst_pred,
+                },
+                "wild_sentence": {
+                    "n_tokens": len(WILD_SENTENCE_TOKENS),
+                    "n_errors": wild_errors,
+                    "per_sentence_accuracy": wild_acc,
+                    "tokens": WILD_SENTENCE_TOKENS,
+                    "true_tags": WILD_SENTENCE_POS_TAGS,
+                    "pred_tags": wild_pred_tags,
+                },
+            }
+            q3_out_path = RESULTS_DIR / f"q3_analysis_seed{seed}.json"
+            q3_out_path.write_text(json.dumps(q3_summary, indent=2) + "\n", encoding="utf-8")
+            print(f"\n  saved Q3 analysis: {q3_out_path}")
 
     # free memory between seeds (helps on MPS and on Colab T4)
     del model, optimizer, train_loader, valid_loader, test_loader
