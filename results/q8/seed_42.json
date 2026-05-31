@@ -1,0 +1,20 @@
+{
+  "question": "Q8",
+  "script": "src/q8_roberta.py",
+  "model": "roberta-base",
+  "task": "ner",
+  "seed": 42,
+  "run_index": 0,
+  "epochs": 3,
+  "batch_size": 8,
+  "lr": 1e-05,
+  "training_seconds": 3250.028064832999,
+  "test": {
+    "token_micro_accuracy": 0.9823839776031011,
+    "token_macro_accuracy": 0.9162627902762497,
+    "entity_micro_f1": 0.911679916135232,
+    "entity_macro_f1": 0.8977931771966684
+  },
+  "device": "mps",
+  "git_commit": "e0a440ded1cd354912f3b7f974e952a9d336ad30"
+}

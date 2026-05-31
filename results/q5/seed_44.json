@@ -1,0 +1,25 @@
+{
+  "question": "Q5",
+  "script": "src/q5_frozen_bert.py",
+  "notebook": "notebooks/05_q5_frozen_bert.ipynb",
+  "model": "bert-base-uncased",
+  "task": "ner",
+  "frozen_encoder": true,
+  "seed": 44,
+  "run_index": 2,
+  "epochs": 3,
+  "batch_size": 8,
+  "lr": 1e-05,
+  "training_seconds": 1608.6282277660002,
+  "total_params": 108898569,
+  "frozen_params": 108891648,
+  "trainable_params": 6921,
+  "test": {
+    "token_micro_accuracy": 0.8484763648110262,
+    "token_macro_accuracy": 0.1967278578089762,
+    "entity_micro_f1": 0.242275088870659,
+    "entity_macro_f1": 0.1927376589706925
+  },
+  "device": "cuda",
+  "git_commit": null
+}
