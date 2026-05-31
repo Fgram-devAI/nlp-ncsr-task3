@@ -67,7 +67,7 @@ their own dependency cell.
 │   ├── q10/<prompt>/                 # Q10 zero-shot: sentences.jsonl + aggregated.json
 │   ├── ext_gemini_flash_lite/        # bonus: Gemini Flash-Lite zero-shot (partial)
 │   └── ext_glm_flash/                # bonus: GLM-4.7-Flash zero-shot
-├── reports/                          # PDF draft sources, figures
+├── report/                           # final PDF report
 ├── pyproject.toml                    # local runtime + dev deps
 └── .gitignore
 ```
