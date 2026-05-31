@@ -48,9 +48,10 @@ notebooks bring their own dependency cell.
 │   └── 08_q8_roberta.ipynb           # Q8 — self-contained Colab T4 runtime
 ├── results/
 │   ├── q1/seed_{42,43,44}.json       # Q1 NER baseline metrics (committed)
-│   ├── q6/                           # Q6 POS metrics (populated by the notebook)
-│   ├── q7/                           # Q7 chunking metrics (populated by the notebook)
-│   └── q8/                           # Q8 RoBERTa metrics (populated by the notebook)
+│   ├── q5/seed_{42,43,44}.json       # Q5 frozen-BERT metrics (committed)
+│   ├── q6/seed_{42,43,44}.json       # Q6 POS metrics (committed)
+│   ├── q7/seed_{42,43,44}.json       # Q7 chunking metrics (committed)
+│   └── q8/seed_{42,43,44}.json       # Q8 RoBERTa metrics (committed)
 ├── reports/                          # PDF draft sources, figures
 ├── pyproject.toml                    # local runtime + dev deps
 └── .gitignore

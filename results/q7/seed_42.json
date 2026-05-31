@@ -1,0 +1,22 @@
+{
+  "question": "Q7",
+  "script": "src/q7_chunking.py",
+  "model": "bert-base-uncased",
+  "task": "chunking",
+  "tag_column": "chunk_tags",
+  "seed": 42,
+  "run_index": 0,
+  "epochs": 3,
+  "batch_size": 8,
+  "lr": 1e-05,
+  "training_seconds": 3122.383154875002,
+  "num_labels": 20,
+  "test": {
+    "token_micro_accuracy": 0.9529880478087649,
+    "token_macro_accuracy": 0.5967732391725241,
+    "entity_micro_f1": 0.9052800000000001,
+    "entity_macro_f1": 0.6271657078882601
+  },
+  "device": "mps",
+  "git_commit": "e0a440ded1cd354912f3b7f974e952a9d336ad30"
+}

@@ -1,0 +1,21 @@
+{
+  "question": "Q6",
+  "script": "src/q6_pos_tagging.py",
+  "notebook": "notebooks/06_q6_pos_tagging.ipynb",
+  "model": "bert-base-uncased",
+  "task": "pos",
+  "tag_column": "pos_tags",
+  "seed": 43,
+  "run_index": 1,
+  "epochs": 3,
+  "batch_size": 8,
+  "lr": 1e-05,
+  "training_seconds": 4455.671961302001,
+  "num_labels": 45,
+  "test": {
+    "token_micro_accuracy": 0.9415742435662754,
+    "token_macro_accuracy": 0.8499828815034625
+  },
+  "device": "cuda",
+  "git_commit": null
+}
