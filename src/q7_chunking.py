@@ -17,6 +17,13 @@
 # Persists per-seed JSON to results/q7/. Runs locally on MPS (Apple Silicon)
 # by default; CUDA on Colab; CPU as last-resort fallback. See CLAUDE.md §3.
 #
+# Q3-style error analysis (PART OF Q7 per assignment §7): when the running
+# seed equals Q3_ANALYSIS_SEED (42 by default) the script additionally dumps
+# results/q7/q3_analysis_seed{seed}.json with the worst-tagged test sentence
+# (>=10 tokens, >=1 true chunk, >=1 error, lowest per-sentence seqeval F1)
+# and the model's predictions on the wild sentence shared with Q3 NER and Q6
+# POS. The 3-seed sweep is otherwise unchanged.
+#
 # Diff anchors for the report:
 #   git diff src/NER-BERT.py        src/q7_chunking.py  → full Q7 modification
 #   git diff src/q1_baseline_3runs.py src/q7_chunking.py → concentrated Q7 delta
@@ -46,11 +53,27 @@ from tqdm.auto import tqdm
 EPOCHS = 3
 BATCH_SIZE = 8
 LR = 1e-5
-SEEDS = [42, 43, 44]                                         # 3-run sweep
+SEEDS = [42, 43, 44]   # 3-run sweep; set to [42] for a fast local Q3-only run
 
 # results location — separate q7 namespace
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "results" / "q7"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Q3-style error analysis constants. Triggered only when the running seed
+# equals Q3_ANALYSIS_SEED. Wild-sentence tokens are shared with Q3 NER
+# (src/q3_error_analysis.py) and Q6 POS (src/q6_pos_tagging.py) so the three
+# error analyses align like-for-like across the report.
+Q3_ANALYSIS_SEED = 42
+WILD_SENTENCE_TOKENS = [
+    "Greek", "startup", "Helios", "bought", "Bavarian", "rival",
+    "KronosAI", "in", "Berlin", "yesterday", "for", "2",
+    "billion", "euros", ".",
+]
+WILD_SENTENCE_CHUNK_TAGS = [
+    "B-NP", "I-NP", "I-NP", "B-VP", "B-NP", "I-NP",
+    "I-NP", "B-PP", "B-NP", "B-NP", "B-PP", "B-NP",
+    "I-NP", "I-NP", "O",
+]
 
 # fetch the data via kagglehub (cached at ~/.cache/kagglehub/...)
 print("downloading dataset (cached on second run)")
@@ -353,6 +376,127 @@ for run_index, seed in enumerate(SEEDS):
     out_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     print(f"\nsaved metrics: {out_path}")
     PER_SEED_RESULTS.append(metrics)
+
+    # ── Q3-style error analysis branch (chunking) ───────────────────────────
+    # Reuses the per-sentence lists already built by EvaluateModel on the
+    # test set — no second inference pass needed. Chunks are BIO so seqeval
+    # F1 applies (same ranking as Q3 NER, not Q6 POS's token accuracy).
+    if seed == Q3_ANALYSIS_SEED:
+        print(f"\n--- Q3-style error analysis (seed={seed}) ---")
+        assert len(y_true_tags) == len(test_sentences), (
+            f"per-sentence count {len(y_true_tags)} != "
+            f"test sentences {len(test_sentences)}"
+        )
+
+        def _per_sentence_chunk_f1(true: list[str], pred: list[str]) -> float:
+            # seqeval F1 on a single sentence pair. Sentences with no true
+            # chunk (all-O) are filtered out before this call.
+            return float(seqeval_f1([true], [pred]))  # pyright: ignore[reportArgumentType]
+
+        q3_candidates: list[tuple[int, list[str], list[str], list[str], float]] = []
+        for cand_idx, (cand_sent, cand_true, cand_pred) in enumerate(
+            zip(test_sentences, y_true_tags, y_pred_tags)
+        ):
+            cand_tokens = cand_sent["tokens"]
+            if len(cand_tokens) < 10:
+                continue
+            if not any(t != "O" for t in cand_true):
+                continue
+            if not any(t != p for t, p in zip(cand_true, cand_pred)):
+                continue
+            cand_f1 = _per_sentence_chunk_f1(cand_true, cand_pred)
+            q3_candidates.append((cand_idx, cand_tokens, cand_true, cand_pred, cand_f1))
+
+        if not q3_candidates:
+            print("  no candidate sentence found — skipping Q3 dump")
+        else:
+            q3_candidates.sort(key=lambda x: x[4])
+            (
+                worst_idx,
+                worst_tokens,
+                worst_true,
+                worst_pred,
+                worst_f1,
+            ) = q3_candidates[0]
+            print(
+                f"  failing sentence: idx={worst_idx} "
+                f"per-sentence-f1={worst_f1:.4f} "
+                f"length={len(worst_tokens)} candidates_considered={len(q3_candidates)}"
+            )
+            for tok, t, p in zip(worst_tokens, worst_true, worst_pred):
+                marker = "X" if t != p else " "
+                print(f"    {marker} {tok:25s}  true={t:7s}  pred={p:7s}")
+
+            # Wild-sentence inference (first-subword-wins, same alignment as training).
+            print(f"\n  tagging wild sentence ({len(WILD_SENTENCE_TOKENS)} tokens)")
+            wild_encoding = tokenizer(
+                WILD_SENTENCE_TOKENS,
+                truncation=True,
+                padding="max_length",
+                is_split_into_words=True,
+                return_tensors="pt",
+            )
+            wild_inputs = {
+                "input_ids": wild_encoding["input_ids"].to(device),
+                "attention_mask": wild_encoding["attention_mask"].to(device),
+            }
+            with torch.no_grad():
+                wild_logits = model(**wild_inputs).logits
+            wild_preds_full = torch.argmax(wild_logits, dim=-1)[0].tolist()
+            wild_word_ids = wild_encoding.word_ids()
+            wild_pred_tags: list[str] = []
+            prev_word_idx: int | None = None
+            for word_idx, pred_id in zip(wild_word_ids, wild_preds_full):
+                if word_idx is None or word_idx == prev_word_idx:
+                    prev_word_idx = word_idx
+                    continue
+                wild_pred_tags.append(id2label[pred_id])
+                prev_word_idx = word_idx
+            assert len(wild_pred_tags) == len(WILD_SENTENCE_TOKENS)
+
+            wild_f1 = _per_sentence_chunk_f1(WILD_SENTENCE_CHUNK_TAGS, wild_pred_tags)
+            wild_errors = sum(
+                t != p for t, p in zip(WILD_SENTENCE_CHUNK_TAGS, wild_pred_tags)
+            )
+            for tok, t, p in zip(WILD_SENTENCE_TOKENS, WILD_SENTENCE_CHUNK_TAGS, wild_pred_tags):
+                marker = "X" if t != p else " "
+                print(f"    {marker} {tok:25s}  true={t:7s}  pred={p:7s}")
+
+            q3_summary = {
+                "question": "Q3 (chunking)",
+                "script": "src/q7_chunking.py",
+                "model": bert_version,
+                "task": "chunking",
+                "seed": seed,
+                "epochs": EPOCHS,
+                "batch_size": BATCH_SIZE,
+                "lr": LR,
+                "training_seconds": training_seconds,
+                "device": str(device),
+                "git_commit": GIT_SHA,
+                "test_entity_micro_f1": metrics["test"]["entity_micro_f1"],
+                "n_candidate_sentences": len(q3_candidates),
+                "failing_sentence": {
+                    "test_idx": worst_idx,
+                    "n_tokens": len(worst_tokens),
+                    "n_errors": sum(t != p for t, p in zip(worst_true, worst_pred)),
+                    "per_sentence_f1": worst_f1,
+                    "tokens": worst_tokens,
+                    "true_tags": worst_true,
+                    "pred_tags": worst_pred,
+                },
+                "wild_sentence": {
+                    "n_tokens": len(WILD_SENTENCE_TOKENS),
+                    "n_errors": wild_errors,
+                    "per_sentence_f1": wild_f1,
+                    "tokens": WILD_SENTENCE_TOKENS,
+                    "true_tags": WILD_SENTENCE_CHUNK_TAGS,
+                    "pred_tags": wild_pred_tags,
+                },
+            }
+            q3_out_path = RESULTS_DIR / f"q3_analysis_seed{seed}.json"
+            q3_out_path.write_text(json.dumps(q3_summary, indent=2) + "\n", encoding="utf-8")
+            print(f"\n  saved Q3 analysis: {q3_out_path}")
 
     # free memory between seeds (helps on MPS and on Colab T4)
     del model, optimizer, train_loader, valid_loader, test_loader
