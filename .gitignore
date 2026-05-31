@@ -47,9 +47,9 @@ CLAUDE.md
 docs/prompts-guardrails/
 docs/superpowers/
 
-# Reports build artifacts
-reports/build/
-reports/*.aux
-reports/*.log
-reports/*.out
-reports/*.toc
+# Report build artifacts
+report/build/
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
