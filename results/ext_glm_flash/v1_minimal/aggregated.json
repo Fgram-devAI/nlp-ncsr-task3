@@ -1,0 +1,15 @@
+{
+  "question": "ext_glm_flash",
+  "model": "glm-4.7-flash",
+  "prompt": "v1_minimal",
+  "test_subset": "first_200_test_sentences",
+  "completed_count": 197,
+  "parse_failed_count": 3,
+  "unknown_tag_total": 1,
+  "test": {
+    "token_micro_accuracy": 0.9569377990430622,
+    "token_macro_accuracy": 0.7365774464757647,
+    "entity_micro_f1": 0.8229299363057325,
+    "entity_macro_f1": 0.696592337275401
+  }
+}

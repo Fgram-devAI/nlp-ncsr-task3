@@ -1,0 +1,15 @@
+{
+  "question": "ext_gemini_flash_lite",
+  "model": "gemini-2.5-flash",
+  "prompt": "v1_minimal",
+  "test_subset": "first_200_test_sentences",
+  "completed_count": 40,
+  "parse_failed_count": 4,
+  "unknown_tag_total": 0,
+  "test": {
+    "token_micro_accuracy": 0.9912390488110138,
+    "token_macro_accuracy": 0.7975217864923747,
+    "entity_micro_f1": 0.9560975609756097,
+    "entity_macro_f1": 0.8727850877192982
+  }
+}
