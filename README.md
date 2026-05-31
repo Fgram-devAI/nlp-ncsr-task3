@@ -38,16 +38,19 @@ notebooks bring their own dependency cell.
 │   ├── q1_baseline_3runs.py          # Q1 — 3-seed NER sweep, local MPS
 │   ├── q5_frozen_bert.py             # Q5 — frozen BERT, diff anchor (paired w/ notebook)
 │   ├── q6_pos_tagging.py             # Q6 — POS tagging, diff anchor (paired w/ notebook)
-│   └── q7_chunking.py                # Q7 — text chunking, diff anchor (paired w/ notebook)
+│   ├── q7_chunking.py                # Q7 — text chunking, diff anchor (paired w/ notebook)
+│   └── q8_roberta.py                 # Q8 — RoBERTa swap, diff anchor (paired w/ notebook)
 ├── notebooks/
 │   ├── 00_baseline_ner_bert.ipynb    # legacy Colab port of the starter
 │   ├── 05_q5_frozen_bert.ipynb       # Q5 — self-contained Colab T4 runtime
 │   ├── 06_q6_pos_tagging.ipynb       # Q6 — self-contained Colab T4 runtime
-│   └── 07_q7_chunking.ipynb          # Q7 — self-contained Colab T4 runtime
+│   ├── 07_q7_chunking.ipynb          # Q7 — self-contained Colab T4 runtime
+│   └── 08_q8_roberta.ipynb           # Q8 — self-contained Colab T4 runtime
 ├── results/
 │   ├── q1/seed_{42,43,44}.json       # Q1 NER baseline metrics (committed)
 │   ├── q6/                           # Q6 POS metrics (populated by the notebook)
-│   └── q7/                           # Q7 chunking metrics (populated by the notebook)
+│   ├── q7/                           # Q7 chunking metrics (populated by the notebook)
+│   └── q8/                           # Q8 RoBERTa metrics (populated by the notebook)
 ├── reports/                          # PDF draft sources, figures
 ├── pyproject.toml                    # local runtime + dev deps
 └── .gitignore
@@ -94,8 +97,9 @@ so a freshly cloned reader can open any of them directly.
 | Q5       | Frozen BERT, head-only training    | [`notebooks/05_q5_frozen_bert.ipynb`](notebooks/05_q5_frozen_bert.ipynb)       | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Fgram-devAI/nlp-ncsr-task3/blob/main/notebooks/05_q5_frozen_bert.ipynb)         |
 | Q6       | POS tagging (full fine-tune)       | [`notebooks/06_q6_pos_tagging.ipynb`](notebooks/06_q6_pos_tagging.ipynb)       | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Fgram-devAI/nlp-ncsr-task3/blob/main/notebooks/06_q6_pos_tagging.ipynb)         |
 | Q7       | Text chunking (full fine-tune)     | [`notebooks/07_q7_chunking.ipynb`](notebooks/07_q7_chunking.ipynb)             | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Fgram-devAI/nlp-ncsr-task3/blob/main/notebooks/07_q7_chunking.ipynb)             |
+| Q8       | NER with RoBERTa-base              | [`notebooks/08_q8_roberta.ipynb`](notebooks/08_q8_roberta.ipynb)               | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Fgram-devAI/nlp-ncsr-task3/blob/main/notebooks/08_q8_roberta.ipynb)               |
 
-Q3, Q8, Q9, Q10 — added as they are implemented. Q1's authoritative
+Q3, Q9, Q10 — added as they are implemented. Q1's authoritative
 implementation is `src/q1_baseline_3runs.py` (runs locally on MPS); the
 `00_baseline_ner_bert.ipynb` notebook is kept as a Colab fallback.
 
