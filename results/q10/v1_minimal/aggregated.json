@@ -1,0 +1,15 @@
+{
+  "question": "q10",
+  "model": "llama-3.3-70b-versatile",
+  "prompt": "v1_minimal",
+  "test_subset": "first_200_test_sentences",
+  "completed_count": 200,
+  "parse_failed_count": 0,
+  "unknown_tag_total": 0,
+  "test": {
+    "token_micro_accuracy": 0.96,
+    "token_macro_accuracy": 0.8842754673753672,
+    "entity_micro_f1": 0.8564760793465578,
+    "entity_macro_f1": 0.733543680066377
+  }
+}
